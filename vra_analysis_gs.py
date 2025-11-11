@@ -15,6 +15,7 @@ OUTPUT_IMAGE_FOLDER = 'data/sc/result_images'
 OUTPUT_CSV_FOLDER = 'data/sc/result_csv'
 OUTPUT_TEMP_FOLDER = 'data/sc/temp_layers'
 OUTPUT_LOG_FOLDER = 'logs'
+vra_area = '순창'
 
 # 좌표계 설정 (모든 데이터를 이 좌표계로 통일)
 TARGET_EPSG = 'EPSG:4326'  # WGS84 경위도 좌표계
@@ -496,9 +497,19 @@ def main():
                 else:
                     dn_to_color_map[dn_val] = '기타'  # 5개 초과시
 
+            # DN별 그룹화 및 통계 계산
+            print(f"   [디버깅] GeoDataFrame 행 수: {len(gdf)}")
+            print(f"   [디버깅] 고유 DN 값: {sorted(gdf['DN'].unique())}")
+
             grouped = gdf.groupby('DN')
+            dn_count = 0
             for dn_value, group in grouped:
-                if dn_value == 0: continue  # DN=0은 이미 삭제했지만 안전장치
+                if dn_value == 0:
+                    print(f"   [경고] DN=0 피처 발견 ({len(group)}개) - 건너뜀")
+                    continue  # DN=0은 이미 삭제했지만 안전장치
+
+                # DN별 피처 수 확인
+                feature_count_in_group = len(group)
 
                 before_mean_result = group['before_mean'].mean()
                 after_mean_result = group['after_mean'].mean()
@@ -517,8 +528,13 @@ def main():
                 # color_group 컬럼 생성
                 color_group_name = dn_to_color_map.get(dn_value, '알 수 없음')
 
+                # 디버깅 출력
+                print(
+                    f"   [DN={dn_value}] 피처 수: {feature_count_in_group}, 면적: {area_ha_sum:.6f}ha, 살포량: {spray_sum:.3f}")
+
                 growth_data_list.append({
                     '필지코드': field_code,
+                    'DN': int(dn_value),
                     'color_group': color_group_name,
                     'area_ha': area_ha_sum,
                     'spray_sum': spray_sum,
@@ -526,7 +542,9 @@ def main():
                     'after_mean_result': after_mean_result,
                     'vi_rate': vi_rate
                 })
-            print(f"   [성공] {field_code} 필지 통계 집계 완료.")
+                dn_count += 1
+
+            print(f"   [성공] {field_code} 필지 통계 집계 완료 (총 {dn_count}개 DN 그룹)")
 
             # === 5단계 (구 3단계): 'After' 이미지 생성 ===
             print("   [5단계] 'After' 레이어 스타일링 및 이미지 저장...")
@@ -604,14 +622,14 @@ def main():
     print("\n[6단계] 최종 CSV 파일 저장...")
 
     # [4-1] CSV 저장
-    csv_path_1 = os.path.join(OUTPUT_CSV_FOLDER, '변량시비 전후 표준편차.csv')
+    csv_path_1 = os.path.join(OUTPUT_CSV_FOLDER, f'{vra_area}_변량시비 전후 표준편차.csv')
     df1 = pd.DataFrame(cv_data_list)
     df1.to_csv(csv_path_1, index=False, encoding='utf-8-sig')
     print(f"[최종 성공] CV 통계 CSV 파일 저장 완료: {csv_path_1}")
     print(f"   - 총 {len(df1)}개 필지 데이터")
 
     # [4-2] CSV 저장
-    csv_path_2 = os.path.join(OUTPUT_CSV_FOLDER, '변량시비 전후 생육 변화량 확인.csv')
+    csv_path_2 = os.path.join(OUTPUT_CSV_FOLDER, f'{vra_area}_변량시비 전후 생육 변화량 확인.csv')
     df2 = pd.DataFrame(growth_data_list)
     df2.to_csv(csv_path_2, index=False, encoding='utf-8-sig')
     print(f"[최종 성공] 생육 변화량 CSV 파일 저장 완료: {csv_path_2}")
