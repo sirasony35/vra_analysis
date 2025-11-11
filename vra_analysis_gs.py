@@ -8,12 +8,12 @@ from datetime import datetime
 
 # --- 1. 사용자 설정 부분 ---
 QGIS_INSTALL_PATH = 'C:/Program Files/QGIS 3.40.11'  # 버전 업데이트 반영
-VRA_FOLDER = 'vra_data'
-BEFORE_FOLDER = 'before_data'
-AFTER_FOLDER = 'after_data'
-OUTPUT_IMAGE_FOLDER = 'result_images'
-OUTPUT_CSV_FOLDER = 'result_csv'
-OUTPUT_TEMP_FOLDER = 'temp_layers'
+VRA_FOLDER = 'data/sc/sc_vra_data'
+BEFORE_FOLDER = 'data/sc/sc_before_data'
+AFTER_FOLDER = 'data/sc/sc_after_data'
+OUTPUT_IMAGE_FOLDER = 'data/sc/result_images'
+OUTPUT_CSV_FOLDER = 'data/sc/result_csv'
+OUTPUT_TEMP_FOLDER = 'data/sc/temp_layers'
 OUTPUT_LOG_FOLDER = 'logs'
 
 # 좌표계 설정 (모든 데이터를 이 좌표계로 통일)
