@@ -45,7 +45,6 @@ def find_file(directory, code):
 
 
 def read_and_resample(path, target_gsd=1.0):
-    """이미지 로드 및 1m 리샘플링"""
     with rasterio.open(path) as src:
         scale_x = src.res[0] / target_gsd
         scale_y = src.res[1] / target_gsd
@@ -73,7 +72,6 @@ def read_and_resample(path, target_gsd=1.0):
 
 
 def align_image(src_path, ref_profile):
-    """After 이미지를 Before 기준에 맞춰 정합"""
     with rasterio.open(src_path) as src:
         dst_height = ref_profile['height']
         dst_width = ref_profile['width']
@@ -93,7 +91,7 @@ def align_image(src_path, ref_profile):
 
 
 # ---------------------------------------------------------
-# [시각화 1] Before 이미지 (범례: 범위 + 평균 추가)
+# [시각화 1] Before 이미지
 # ---------------------------------------------------------
 def save_before_plot(data, quantiles, zone_stats, title, save_path):
     mask = (data <= 0) | (np.isnan(data))
@@ -109,37 +107,27 @@ def save_before_plot(data, quantiles, zone_stats, title, save_path):
     ax.axis('off')
     ax.set_title(title, fontsize=15, pad=20)
 
-    # 범례 생성 (통계 정보 포함)
     legend_patches = []
-
-    # zone_stats 리스트는 Zone 1~5 순서대로 저장됨
-    # stats['min'], stats['max'], stats['mean'] 활용
-
     for i, stats in enumerate(zone_stats):
-        # i=0 -> Zone 1
         z_name = ZONE_NAMES[i]
-
-        # 유효한 통계가 있는 경우
         if stats['count'] > 0:
             label_text = (f"{z_name}\n"
                           f"  Range: {stats['min']:.3f} ~ {stats['max']:.3f}\n"
                           f"  Avg: {stats['mean']:.3f}")
         else:
             label_text = f"{z_name}: No Data"
-
         patch = mpatches.Patch(color=COLOR_LIST[i], label=label_text)
         legend_patches.append(patch)
 
     plt.legend(handles=legend_patches, bbox_to_anchor=(1.05, 1), loc='upper left',
                title="Before Zones Info", fontsize=9)
-
     plt.savefig(save_path, bbox_inches='tight', pad_inches=0.1, dpi=150)
     plt.close()
     print(f"      └ [이미지 1] {os.path.basename(save_path)}")
 
 
 # ---------------------------------------------------------
-# [시각화 2] After 이미지 (위치: Before, 데이터: After)
+# [시각화 2] After 이미지 (Zone별)
 # ---------------------------------------------------------
 def save_after_zone_plot(zone_map, data_a_aligned, mean_b_list, title, save_path):
     cmap_zones = colors.ListedColormap(['white'] + COLOR_LIST)
@@ -152,7 +140,6 @@ def save_after_zone_plot(zone_map, data_a_aligned, mean_b_list, title, save_path
     ax.set_title(title, fontsize=15, pad=20)
 
     legend_patches = []
-
     for z_id in range(1, 6):
         mask = (zone_map == z_id)
         vals_a = data_a_aligned[mask & (data_a_aligned > 0) & (~np.isnan(data_a_aligned))]
@@ -162,7 +149,6 @@ def save_after_zone_plot(zone_map, data_a_aligned, mean_b_list, title, save_path
             a_max = np.max(vals_a)
             a_mean = np.mean(vals_a)
             b_mean = mean_b_list[z_id - 1]
-
             growth_rate = (a_mean - b_mean) / b_mean * 100 if b_mean != 0 else 0.0
 
             label_text = (f"{ZONE_NAMES[z_id - 1]}\n"
@@ -170,13 +156,11 @@ def save_after_zone_plot(zone_map, data_a_aligned, mean_b_list, title, save_path
                           f"  Avg: {a_mean:.3f} ({growth_rate:+.1f}%)")
         else:
             label_text = f"{ZONE_NAMES[z_id - 1]}: No Data"
-
         patch = mpatches.Patch(color=COLOR_LIST[z_id - 1], label=label_text)
         legend_patches.append(patch)
 
     plt.legend(handles=legend_patches, bbox_to_anchor=(1.05, 1), loc='upper left',
                title="After Stats by Before Zones", fontsize=9)
-
     plt.savefig(save_path, bbox_inches='tight', pad_inches=0.1, dpi=150)
     plt.close()
     print(f"      └ [이미지 2] {os.path.basename(save_path)}")
@@ -198,13 +182,78 @@ def save_growth_plot(growth_map, title, save_path):
     im = ax.imshow(masked_data, cmap=cmap, norm=norm, interpolation='nearest')
     ax.axis('off')
     ax.set_title(title, fontsize=15, pad=20)
-
     cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     cbar.set_label('Growth Rate (%)', rotation=270, labelpad=15)
-
     plt.savefig(save_path, bbox_inches='tight', pad_inches=0.1, dpi=150)
     plt.close()
     print(f"      └ [이미지 3] {os.path.basename(save_path)}")
+
+
+# ---------------------------------------------------------
+# [시각화 4] 막대그래프 (신규 추가)
+# ---------------------------------------------------------
+def save_growth_bar_chart(stats_summary, field_code, save_path):
+    """
+    Zone별 Before/After Mean 비교 막대그래프 생성
+    """
+    zones = [f"Zone {i}" for i in range(1, 6)]
+    before_means = [d['before'] for d in stats_summary]
+    after_means = [d['after'] for d in stats_summary]
+    rates = [d['rate'] for d in stats_summary]
+
+    x = np.arange(len(zones))  # 레이블 위치
+    width = 0.35  # 막대 너비
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    # 막대 생성 (Before: 회색, After: 파란색)
+    rects1 = ax.bar(x - width / 2, before_means, width, label='Before', color='#aaaaaa', alpha=0.8)
+    rects2 = ax.bar(x + width / 2, after_means, width, label='After', color='#1f77b4', alpha=0.9)
+
+    # 레이블링
+    ax.set_ylabel('GNDVI Mean')
+    ax.set_title(f'{field_code} Growth Comparison by Zone')
+    ax.set_xticks(x)
+    ax.set_xticklabels(zones)
+    ax.legend()
+
+    # Y축 범위 설정 (화살표 공간 확보)
+    max_val = max(max(before_means), max(after_means)) if before_means else 0
+    ax.set_ylim(0, max_val * 1.25)
+
+    # 증감율 텍스트/화살표 표시
+    for i in range(len(zones)):
+        h_a = after_means[i]
+        h_b = before_means[i]
+        rate = rates[i]
+
+        if h_b == 0: continue  # 데이터 없는 경우 패스
+
+        # 표시 위치 (더 높은 막대 위)
+        y_pos = max(h_a, h_b) + (max_val * 0.02)
+
+        # 스타일 결정
+        if rate > 0:
+            marker = "▲"
+            color = "#d62728"  # 빨강 (성장)
+            text = f"+{rate:.1f}%"
+        elif rate < 0:
+            marker = "▼"
+            color = "#1f77b4"  # 파랑 (감소)
+            text = f"{rate:.1f}%"
+        else:
+            marker = "-"
+            color = "black"
+            text = "0.0%"
+
+        # 텍스트 추가
+        ax.text(x[i], y_pos, f"{marker}\n{text}", ha='center', va='bottom',
+                color=color, fontweight='bold', fontsize=10)
+
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150)
+    plt.close()
+    print(f"      └ [이미지 4] {os.path.basename(save_path)}")
 
 
 def process_field(field_code):
@@ -216,41 +265,33 @@ def process_field(field_code):
         print("[오류] 파일 누락")
         return None
 
-    # 1. Before 데이터 로드
+    # 1. Before 로드
     data_b, mask_b, prof_b = read_and_resample(path_b, target_gsd=TARGET_GSD)
     if np.sum(mask_b) == 0: return None
 
-    # 2. Zone 설정 (Before 기준)
+    # 2. Zone 설정
     valid_b = data_b[mask_b]
     quantiles = np.percentile(valid_b, [20, 40, 60, 80])
-
     bins = [-np.inf] + list(quantiles) + [np.inf]
     zone_map = np.zeros_like(data_b, dtype=np.uint8)
     zone_map[mask_b] = np.digitize(data_b[mask_b], bins)
 
-    # Before Zone별 통계 계산 (Min, Max, Mean) - 시각화 1용
+    # Before Stats 계산
     before_stats_list = []
-    mean_b_list = []  # 시각화 2 및 CSV용
-
+    mean_b_list = []
     for z in range(1, 6):
         vals = data_b[(zone_map == z)]
         if len(vals) > 0:
-            stats = {
-                'min': np.min(vals),
-                'max': np.max(vals),
-                'mean': np.mean(vals),
-                'count': len(vals)
-            }
+            stats = {'min': np.min(vals), 'max': np.max(vals), 'mean': np.mean(vals), 'count': len(vals)}
         else:
             stats = {'min': 0, 'max': 0, 'mean': 0, 'count': 0}
-
         before_stats_list.append(stats)
         mean_b_list.append(stats['mean'])
 
-    # 3. After 데이터 정합
+    # 3. After 정합
     data_a_aligned = align_image(path_a, prof_b)
 
-    # 4. 성장률 맵 계산
+    # 4. 성장률 맵
     with np.errstate(divide='ignore', invalid='ignore'):
         growth_map = (data_a_aligned - data_b) / data_b * 100
         growth_map[~mask_b] = np.nan
@@ -259,51 +300,77 @@ def process_field(field_code):
     # ==========================
     # 이미지 저장
     # ==========================
-
-    # [1] Before Image (업데이트된 범례)
+    # [1] Before
     save_before_plot(data_b, quantiles, before_stats_list,
                      f"{field_code} Before Status",
                      os.path.join(DIR_OUTPUT, f"{field_code}_01_Before.png"))
-
-    # [2] After Image
+    # [2] After Zone
     save_after_zone_plot(zone_map, data_a_aligned, mean_b_list,
                          f"{field_code} After Status (by Zones)",
                          os.path.join(DIR_OUTPUT, f"{field_code}_02_After_ZoneStats.png"))
-
-    # [3] Growth Rate Map
+    # [3] Growth Map
     save_growth_plot(growth_map, f"{field_code} Growth Rate (%)",
                      os.path.join(DIR_OUTPUT, f"{field_code}_03_GrowthRate.png"))
 
     # ==========================
-    # CSV 데이터 집계
+    # 데이터 집계 및 차트 생성
     # ==========================
     results = []
+    stats_summary = []  # 차트용 데이터
+
     for z in range(1, 6):
         z_mask = (zone_map == z)
         overlap = z_mask & (data_a_aligned > 0) & (~np.isnan(data_a_aligned))
 
+        # 기본값
+        mean_b = mean_b_list[z - 1]
+        mean_a = 0.0
+        diff = 0.0
+        rate = 0.0
+        a_min, a_max = 0.0, 0.0
+        area = 0
+
         if np.sum(overlap) > 0:
             vals_a = data_a_aligned[overlap]
-            vals_b = data_b[overlap]
+            vals_b = data_b[overlap]  # 위치 매칭
 
             mean_a = np.mean(vals_a)
-            mean_b = np.mean(vals_b)
+            mean_b_overlap = np.mean(vals_b)  # 겹치는 부분의 Before 평균 (전체 평균과 미세하게 다를 수 있음)
+
+            # 차트/CSV의 일관성을 위해 겹치는 영역 기준으로 다시 계산하는 것이 더 정확할 수 있으나
+            # 여기서는 전체 Zone 평균(mean_b)과 비교하겠습니다.
+
             diff = mean_a - mean_b
             rate = (diff / mean_b * 100) if mean_b != 0 else 0.0
 
-            results.append({
-                'Field': field_code,
-                'Zone': f"Zone {z}",
-                'Area_m2': np.sum(overlap),
-                'Before_Min': round(before_stats_list[z - 1]['min'], 4),  # 추가된 컬럼
-                'Before_Mean': round(mean_b, 4),
-                'Before_Max': round(before_stats_list[z - 1]['max'], 4),  # 추가된 컬럼
-                'After_Min': round(np.min(vals_a), 4),
-                'After_Mean': round(mean_a, 4),
-                'After_Max': round(np.max(vals_a), 4),
-                'Change_Value': round(diff, 4),
-                'Growth_Rate(%)': round(rate, 2)
-            })
+            a_min, a_max = np.min(vals_a), np.max(vals_a)
+            area = np.sum(overlap)
+
+        # CSV 데이터
+        results.append({
+            'Field': field_code,
+            'Zone': f"Zone {z}",
+            'Area_m2': area,
+            'Before_Min': round(before_stats_list[z - 1]['min'], 4),
+            'Before_Mean': round(mean_b, 4),
+            'Before_Max': round(before_stats_list[z - 1]['max'], 4),
+            'After_Min': round(a_min, 4),
+            'After_Mean': round(mean_a, 4),
+            'After_Max': round(a_max, 4),
+            'Change_Value': round(diff, 4),
+            'Growth_Rate(%)': round(rate, 2)
+        })
+
+        # 차트용 데이터
+        stats_summary.append({
+            'before': mean_b,
+            'after': mean_a,
+            'rate': rate
+        })
+
+    # [4] 막대 그래프 저장
+    save_growth_bar_chart(stats_summary, field_code,
+                          os.path.join(DIR_OUTPUT, f"{field_code}_04_GrowthChart.png"))
 
     return results
 
@@ -325,6 +392,9 @@ if __name__ == "__main__":
             if res: all_data.extend(res)
         except Exception as e:
             print(f"[오류] {c}: {e}")
+            import traceback
+
+            traceback.print_exc()
 
     if all_data:
         df = pd.DataFrame(all_data)
